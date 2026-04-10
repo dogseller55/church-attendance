@@ -231,16 +231,20 @@ async function processBatchFiles(files) {
 
     try {
       const base64 = await fileToBase64(file);
-      const response = await fetch(API_URL + '/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, group, image: base64 })
-      });
+// memberMap 생성 (faceKey → {name, group})
+const memberMap = {};
+members.forEach(m => { if (m.faceKey) memberMap[m.faceKey] = { name: m.name, group: m.group }; });
+
+const response = await fetch(API_URL + '/recognize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: currentPhotoBase64, memberMap })
+    });
       const data = await response.json();
 
       const item = document.getElementById(itemId);
       if (data.success) {
-        members.push({ name, group, faceId: data.faceId });
+        members.push({ name, group, faceId: data.faceId, faceKey: data.faceKey });
         item.innerHTML = `<span>✅ ${name} (${group})</span><span class="status-icon">✅</span>`;
         success++;
       } else {
