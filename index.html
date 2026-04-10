@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>교회 출석 관리</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo', sans-serif; background: #f0f4f8; color: #333; }
+  .header { background: #2d6a4f; color: white; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; }
+  .tab-bar { display: flex; background: white; border-bottom: 2px solid #e0e0e0; }
+  .tab { flex: 1; padding: 12px; text-align: center; font-size: 14px; cursor: pointer; color: #888; }
+  .tab.active { color: #2d6a4f; border-bottom: 2px solid #2d6a4f; font-weight: bold; margin-bottom: -2px; }
+  .page { display: none; padding: 16px; }
+  .page.active { display: block; }
+  .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+  .btn-primary { background: #2d6a4f; color: white; }
+  .btn-secondary { background: #e0e0e0; color: #333; }
+  .btn-danger { background: #e74c3c; color: white; }
+  input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-top: 6px; }
+  label { font-size: 13px; color: #666; font-weight: bold; }
+  .member-item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+  .member-photo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin-right: 12px; background: #ddd; }
+  .member-info { flex: 1; }
+  .member-name { font-weight: bold; font-size: 15px; }
+  .member-group { font-size: 12px; color: #888; margin-top: 2px; }
+  .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+  .status-present { background: #d4edda; color: #155724; }
+  .status-absent { background: #f8d7da; color: #721c24; }
+  #camera-view { width: 100%; border-radius: 12px; background: #000; max-height: 300px; object-fit: cover; }
+  .result-box { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-top: 12px; min-height: 80px; }
+  .recognized-item { display: flex; align-items: center; padding: 8px; background: white; border-radius: 8px; margin-bottom: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .recognized-item .check { color: #2d6a4f; font-size: 20px; margin-right: 10px; }
+  .stat-row { display: flex; justify-content: space-around; text-align: center; padding: 8px 0; }
+  .stat-num { font-size: 28px; font-weight: bold; color: #2d6a4f; }
+  .stat-label { font-size: 12px; color: #888; margin-top: 4px; }
+  .loading { text-align: center; padding: 20px; color: #888; }
+  .alert { padding: 12px; border-radius: 8px; margin-top: 8px; font-size: 14px; }
+  .alert-success { background: #d4edda; color: #155724; }
+  .alert-error { background: #f8d7da; color: #721c24; }
+  .date-header { font-size: 14px; color: #888; margin-bottom: 12px; }
+  #photo-preview { width: 100%; border-radius: 8px; margin-top: 8px; display: none; }
+  .progress-bar { height: 6px; background: #e0e0e0; border-radius: 3px; margin-top: 8px; }
+  .progress-fill { height: 100%; background: #2d6a4f; border-radius: 3px; transition: width 0.3s; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⛪ 교회 출석 관리</h1>
+  <span id="today-date" style="font-size:13px;"></span>
+</div>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showPage('attendance')">📷 출석체크</div>
+  <div class="tab" onclick="showPage('members')">👥 교인관리</div>
+  <div class="tab" onclick="showPage('stats')">📊 통계</div>
+</div>
+
+<!-- 출석체크 페이지 -->
+<div class="page active" id="page-attendance">
+  <div class="card">
+    <label>📅 예배 날짜</label>
+    <input type="date" id="attendance-date">
+    <label style="margin-top:12px; display:block;">🏛️ 예배 구분</label>
+    <select id="worship-type">
+      <option>주일예배</option>
+      <option>수요예배</option>
+      <option>금요예배</option>
+      <option>특별예배</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <label>📸 사진으로 출석체크</label>
+    <p style="font-size:13px; color:#888; margin-top:4px;">단체사진을 촬영하거나 업로드하세요</p>
+    <video id="camera-view" autoplay playsinline style="display:none;"></video>
+    <img id="photo-preview">
+    <canvas id="canvas" style="display:none;"></canvas>
+    <button class="btn btn-primary" onclick="startCamera()" id="btn-camera">📷 카메라 켜기</button>
+    <button class="btn btn-secondary" onclick="capturePhoto()" id="btn-capture" style="display:none;">📸 촬영</button>
+    <button class="btn btn-secondary" onclick="uploadPhoto()">📁 사진 업로드</button>
+    <input type="file" id="file-input" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+    <button class="btn btn-primary" onclick="analyzePhoto()" id="btn-analyze" style="display:none;">🔍 얼굴 인식 시작</button>
+    <div id="analyze-loading" class="loading" style="display:none;">⏳ 얼굴 인식 중...</div>
+    <div id="analyze-result" class="result-box" style="display:none;"></div>
+    <button class="btn btn-primary" onclick="saveAttendance()" id="btn-save" style="display:none;">✅ 출석 저장</button>
+  </div>
+
+  <div class="card">
+    <label>👤 개별 출석체크</label>
+    <input type="text" id="search-member" placeholder="이름 검색..." oninput="searchMember()">
+    <div id="search-result"></div>
+  </div>
+</div>
+
+<!-- 교인관리 페이지 -->
+<div class="page" id="page-members">
+  <div class="card">
+    <label>➕ 교인 등록</label>
+    <input type="text" id="new-name" placeholder="이름" style="margin-top:8px;">
+    <select id="new-group" style="margin-top:8px;">
+      <option>청년부</option>
+      <option>장년부</option>
+      <option>중고등부</option>
+      <option>어린이부</option>
+      <option>유아부</option>
+    </select>
+    <label style="margin-top:12px; display:block;">얼굴 사진 등록</label>
+    <input type="file" id="member-photo" accept="image/*" onchange="previewMemberPhoto(event)">
+    <img id="member-photo-preview" style="width:100px; height:100px; object-fit:cover; border-radius:50%; margin-top:8px; display:none;">
+    <button class="btn btn-primary" onclick="registerMember()">등록하기</button>
+    <div id="register-result"></div>
+  </div>
+
+  <div class="card">
+    <label>👥 교인 목록 (<span id="member-count">0</span>명)</label>
+    <input type="text" placeholder="이름 검색..." oninput="filterMembers(this.value)" style="margin-top:8px;">
+    <div id="member-list" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<!-- 통계 페이지 -->
+<div class="page" id="page-stats">
+  <div class="card">
+    <label>📅 기간 선택</label>
+    <select id="stats-period" onchange="loadStats()">
+      <option value="today">오늘</option>
+      <option value="week">이번 주</option>
+      <option value="month" selected>이번 달</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="stat-row">
+      <div>
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-label">전체 교인</div>
+      </div>
+      <div>
+        <div class="stat-num" id="stat-present">0</div>
+        <div class="stat-label">출석</div>
+      </div>
+      <div>
+        <div class="stat-num" id="stat-rate">0%</div>
+        <div class="stat-label">출석률</div>
+      </div>
+    </div>
+    <div class="progress-bar" style="margin-top:12px;">
+      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>📋 출석 기록</label>
+    <div id="attendance-log" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<script>
+// ===== 설정 =====
+const API_URL = "https://YOUR_API_GATEWAY_URL"; // 나중에 교체
+
+// ===== 데이터 =====
+let members = JSON.parse(localStorage.getItem('members') || '[]');
+let attendanceLog = JSON.parse(localStorage.getItem('attendanceLog') || '[]');
+let currentPhotoBase64 = null;
+let recognizedFaces = [];
+let stream = null;
+
+// ===== 초기화 =====
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('today-date').textContent = today;
+  document.getElementById('attendance-date').value = today;
+  renderMemberList();
+  loadStats();
+});
+
+// ===== 탭 전환 =====
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  event.target.classList.add('active');
+  if (page === 'stats') loadStats();
+}
+
+// ===== 카메라 =====
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = document.getElementById('camera-view');
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('btn-camera').style.display = 'none';
+    document.getElementById('btn-capture').style.display = 'block';
+  } catch(e) {
+    alert('카메라 접근 실패: ' + e.message);
+  }
+}
+
+function capturePhoto() {
+  const video = document.getElementById('camera-view');
+  const canvas = document.getElementById('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  currentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+  const preview = document.getElementById('photo-preview');
+  preview.src = 'data:image/jpeg;base64,' + currentPhotoBase64;
+  preview.style.display = 'block';
+  video.style.display = 'none';
+
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  document.getElementById('btn-capture').style.display = 'none';
+  document.getElementById('btn-camera').style.display = 'block';
+  document.getElementById('btn-analyze').style.display = 'block';
+}
+
+function uploadPhoto() {
+  document.getElementById('file-input').click();
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    currentPhotoBase64 = e.target.result.split(',')[1];
+    const preview = document.getElementById('photo-preview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    document.getElementById('btn-analyze').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== 얼굴 인식 =====
+async function analyzePhoto() {
+  if (!currentPhotoBase64) return alert('사진을 먼저 촬영하거나 업로드해주세요');
+  
+  document.getElementById('analyze-loading').style.display = 'block';
+  document.getElementById('analyze-result').style.display = 'none';
+  document.getElementById('btn-analyze').style.display = 'none';
+
+  try {
+    const response = await fetch(API_URL + '/recognize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: currentPhotoBase64 })
+    });
+    const data = await response.json();
+    recognizedFaces = data.recognized || [];
+    displayResults(recognizedFaces);
+  } catch(e) {
+    document.getElementById('analyze-loading').style.display = 'none';
+    document.getElementById('analyze-result').style.display = 'block';
+    document.getElementById('analyze-result').innerHTML = '<div class="alert alert-error">❌ 인식 실패: ' + e.message + '</div>';
+  }
+}
+
+function displayResults(faces) {
+  document.getElementById('analyze-loading').style.display = 'none';
+  const resultBox = document.getElementById('analyze-result');
+  resultBox.style.display = 'block';
+  
+  if (faces.length === 0) {
+    resultBox.innerHTML = '<div class="alert alert-error">인식된 얼굴이 없습니다</div>';
+    return;
+  }
+
+  let html = `<p style="font-weight:bold; margin-bottom:8px;">✅ ${faces.length}명 인식됨</p>`;
+  faces.forEach(face => {
+    html += `<div class="recognized-item">
+      <span class="check">✅</span>
+      <div>
+        <div style="font-weight:bold;">${face.name}</div>
+        <div style="font-size:12px; color:#888;">신뢰도: ${Math.round(face.confidence)}%</div>
+      </div>
+    </div>`;
+  });
+  resultBox.innerHTML = html;
+  document.getElementById('btn-save').style.display = 'block';
+}
+
+// ===== 출석 저장 =====
+function saveAttendance() {
+  const date = document.getElementById('attendance-date').value;
+  const worship = document.getElementById('worship-type').value;
+  
+  recognizedFaces.forEach(face => {
+    attendanceLog.push({
+      date, worship,
+      name: face.name,
+      time: new Date().toLocaleTimeString('ko-KR')
+    });
+  });
+
+  localStorage.setItem('attendanceLog', JSON.stringify(attendanceLog));
+  alert(`✅ ${recognizedFaces.length}명 출석 저장 완료!`);
+  document.getElementById('btn-save').style.display = 'none';
+  loadStats();
+}
+
+// ===== 개별 검색 =====
+function searchMember() {
+  const query = document.getElementById('search-member').value;
+  if (!query) { document.getElementById('search-result').innerHTML = ''; return; }
+  
+  const filtered = members.filter(m => m.name.includes(query));
+  const date = document.getElementById('attendance-date').value;
+  const worship = document.getElementById('worship-type').value;
+  
+  let html = '';
+  filtered.forEach(m => {
+    const isPresent = attendanceLog.some(a => a.date === date && a.name === m.name && a.worship === worship);
+    html += `<div class="member-item">
+      <div class="member-info">
+        <div class="member-name">${m.name}</div>
+        <div class="member-group">${m.group}</div>
+      </div>
+      <span class="status-badge ${isPresent ? 'status-present' : 'status-absent'}">${isPresent ? '출석' : '미출석'}</span>
+      ${!isPresent ? `<button onclick="markPresent('${m.name}')" style="margin-left:8px; padding:6px 10px; background:#2d6a4f; color:white; border:none; border-radius:6px; cursor:pointer;">✅</button>` : ''}
+    </div>`;
+  });
+  document.getElementById('search-result').innerHTML = html;
+}
+
+function markPresent(name) {
+  const date = document.getElementById('attendance-date').value;
+  const worship = document.getElementById('worship-type').value;
+  attendanceLog.push({ date, worship, name, time: new Date().toLocaleTimeString('ko-KR') });
+  localStorage.setItem('attendanceLog', JSON.stringify(attendanceLog));
+  searchMember();
+  loadStats();
+}
+
+// ===== 교인 등록 =====
+async function registerMember() {
+  const name = document.getElementById('new-name').value.trim();
+  const group = document.getElementById('new-group').value;
+  const photoFile = document.getElementById('member-photo').files[0];
+
+  if (!name) return alert('이름을 입력해주세요');
+  if (!photoFile) return alert('사진을 등록해주세요');
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const photoBase64 = e.target.result.split(',')[1];
+    
+    document.getElementById('register-result').innerHTML = '<div class="alert">⏳ 등록 중...</div>';
+
+    try {
+      const response = await fetch(API_URL + '/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, group, image: photoBase64 })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        members.push({ name, group, faceId: data.faceId });
+        localStorage.setItem('members', JSON.stringify(members));
+        renderMemberList();
+        document.getElementById('new-name').value = '';
+        document.getElementById('member-photo').value = '';
+        document.getElementById('member-photo-preview').style.display = 'none';
+        document.getElementById('register-result').innerHTML = '<div class="alert alert-success">✅ 등록 완료!</div>';
+      } else {
+        document.getElementById('register-result').innerHTML = '<div class="alert alert-error">❌ 등록 실패: ' + data.error + '</div>';
+      }
+    } catch(e) {
+      document.getElementById('register-result').innerHTML = '<div class="alert alert-error">❌ 오류: ' + e.message + '</div>';
+    }
+  };
+  reader.readAsDataURL(photoFile);
+}
+
+function previewMemberPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const preview = document.getElementById('member-photo-preview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== 교인 목록 =====
+function renderMemberList(filter = '') {
+  const filtered = members.filter(m => m.name.includes(filter));
+  document.getElementById('member-count').textContent = members.length;
+  
+  if (filtered.length === 0) {
+    document.getElementById('member-list').innerHTML = '<p style="color:#888; text-align:center; padding:20px;">등록된 교인이 없습니다</p>';
+    return;
+  }
+
+  let html = '';
+  filtered.forEach((m, i) => {
+    html += `<div class="member-item">
+      <div class="member-info">
+        <div class="member-name">${m.name}</div>
+        <div class="member-group">${m.group}</div>
+      </div>
+      <button onclick="deleteMember(${i})" style="padding:6px 10px; background:#e74c3c; color:white; border:none; border-radius:6px; cursor:pointer;">삭제</button>
+    </div>`;
+  });
+  document.getElementById('member-list').innerHTML = html;
+}
+
+function filterMembers(value) {
+  renderMemberList(value);
+}
+
+function deleteMember(index) {
+  if (!confirm('정말 삭제할까요?')) return;
+  members.splice(index, 1);
+  localStorage.setItem('members', JSON.stringify(members));
+  renderMemberList();
+}
+
+// ===== 통계 =====
+function loadStats() {
+  const total = members.length;
+  const today = new Date().toISOString().split('T')[0];
+  const todayLog = attendanceLog.filter(a => a.date === today);
+  const unique = [...new Set(todayLog.map(a => a.name))];
+  const present = unique.length;
+  const rate = total > 0 ? Math.round(present / total * 100) : 0;
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-present').textContent = present;
+  document.getElementById('stat-rate').textContent = rate + '%';
+  document.getElementById('progress-fill').style.width = rate + '%';
+
+  const recentDates = [...new Set(attendanceLog.map(a => a.date))].sort().reverse().slice(0, 5);
+  let logHtml = '';
+  recentDates.forEach(date => {
+    const dayLog = attendanceLog.filter(a => a.date === date);
+    const dayUnique = [...new Set(dayLog.map(a => a.name))].length;
+    logHtml += `<div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f0f0f0;">
+      <span>${date}</span>
+      <span style="color:#2d6a4f; font-weight:bold;">${dayUnique}명 출석</span>
+    </div>`;
+  });
+  document.getElementById('attendance-log').innerHTML = logHtml || '<p style="color:#888; text-align:center; padding:20px;">기록 없음</p>';
+}
+</script>
+</body>
+</html>
