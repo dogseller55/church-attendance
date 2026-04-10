@@ -269,7 +269,11 @@ const response = await fetch(API_URL + '/recognize', {
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+    reader.onload = (e) => {
+      const result = e.target.result;
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64);
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
